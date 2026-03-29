@@ -1072,6 +1072,7 @@ function create() {
   // Establish wind direction for this session (loadGame may overwrite)
   windAngle = Math.random() * Math.PI * 2;
   driftAngle = windAngle;
+  updateWindIndicator();
 
   // Seed the world with debris already in transit — all off-screen, staggered distances
   // so they arrive spread out rather than all at once
@@ -2129,6 +2130,14 @@ function showCaskPopup(wood, plastic, palm, potato = 0) {
   }, 1500);
 }
 
+// ── Wind Indicator ────────────────────────────────────────────
+
+function updateWindIndicator() {
+  // ▲ points north (up) at 0deg CSS rotation; Phaser angle 0 = east, so subtract 90°
+  const deg = (windAngle * 180 / Math.PI) - 90;
+  document.getElementById('wind-arrow').style.transform = `rotate(${deg}deg)`;
+}
+
 // ── Save / Load ───────────────────────────────────────────────
 
 const SAVE_KEY = 'raftGame_v1';
@@ -2202,6 +2211,7 @@ function loadGame() {
   // Restore wind direction (fallback for saves before this feature)
   windAngle  = data.windAngle ?? Math.random() * Math.PI * 2;
   driftAngle = windAngle;
+  updateWindIndicator();
 }
 
 function showSaveIndicator() {

@@ -1285,7 +1285,6 @@ function update(time, delta) {
   // --- Floating items ---
   const raftBounds = getRaftBounds();
   const pad = 6; // item half-size buffer
-  const cam = this.cameras.main;
   const halfW = (cam.width  / cam.zoom) / 2;
   const halfH = (cam.height / cam.zoom) / 2;
   const maxDist = Math.sqrt(halfW * halfW + halfH * halfH) + 60;

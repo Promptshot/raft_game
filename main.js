@@ -1206,14 +1206,29 @@ function update(time, delta) {
   const driftDX = Math.cos(driftAngle) * DRIFT_SPEED * dt;
   const driftDY = Math.sin(driftAngle) * DRIFT_SPEED * dt;
 
-  const clampedRX = Phaser.Math.Clamp(raftContainer.x + driftDX, WORLD_MARGIN, WORLD_SIZE - WORLD_MARGIN);
-  const clampedRY = Phaser.Math.Clamp(raftContainer.y + driftDY, WORLD_MARGIN, WORLD_SIZE - WORLD_MARGIN);
-  const actualDX  = clampedRX - raftContainer.x;
-  const actualDY  = clampedRY - raftContainer.y;
-  raftContainer.x = clampedRX;
-  raftContainer.y = clampedRY;
+  let newRX = raftContainer.x + driftDX;
+  let newRY = raftContainer.y + driftDY;
+
+  // Wrap raft when it reaches one viewport-half from the edge so the boundary is never visible
+  const cam   = this.cameras.main;
+  const wrapX = Math.ceil(cam.width  / cam.zoom / 2) + 20;
+  const wrapY = Math.ceil(cam.height / cam.zoom / 2) + 20;
+
+  let didWrap = false;
+  if (newRX < wrapX)                   { newRX = WORLD_SIZE - wrapX; didWrap = true; }
+  else if (newRX > WORLD_SIZE - wrapX) { newRX = wrapX;              didWrap = true; }
+  if (newRY < wrapY)                   { newRY = WORLD_SIZE - wrapY; didWrap = true; }
+  else if (newRY > WORLD_SIZE - wrapY) { newRY = wrapY;              didWrap = true; }
+
+  const actualDX = newRX - raftContainer.x;
+  const actualDY = newRY - raftContainer.y;
+  raftContainer.x = newRX;
+  raftContainer.y = newRY;
   player.x += actualDX;
   player.y += actualDY;
+
+  // Snap camera on wrap so it doesn't lerp-pan across the whole world
+  if (didWrap) this.cameras.main.centerOn(player.x, player.y);
 
   // Water scrolls with ocean current
   waterBg.tilePositionX += Math.cos(driftAngle) * CURRENT_SPEED * dt * 0.18 + actualDX * 0.05;

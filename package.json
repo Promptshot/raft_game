@@ -1,0 +1,23 @@
+{
+  "name": "raft_game",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Promptshot/raft_game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Promptshot/raft_game/issues"
+  },
+  "homepage": "https://github.com/Promptshot/raft_game#readme",
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

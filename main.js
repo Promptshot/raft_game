@@ -1081,7 +1081,7 @@ function create() {
   const seedEdge  = Math.sqrt(seedHalfW * seedHalfW + seedHalfH * seedHalfH) + 20;
   for (let i = 0; i < 5; i++) {
     const fanOffset  = ((i / 4) - 0.5) * (Math.PI * 0.44);
-    const groupAngle = driftAngle + Math.PI + fanOffset;
+    const groupAngle = windAngle + fanOffset;
     const dist = seedEdge + i * 45;
     spawnGroupAt.call(this, groupAngle, dist);
   }
@@ -1107,7 +1107,7 @@ function spawnGroup() {
   const halfH = (cam.height / cam.zoom) / 2;
   const edge  = Math.sqrt(halfW * halfW + halfH * halfH) + 20;
   const dist  = edge + Math.random() * 50;
-  spawnGroupAt.call(this, driftAngle + Math.PI, dist);
+  spawnGroupAt.call(this, windAngle, dist);
 }
 
 /**

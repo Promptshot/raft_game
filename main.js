@@ -1113,7 +1113,7 @@ function spawnGroup() {
 
 /**
  * Spawn a loose cluster from a given direction and distance.
- * @param {number} fromAngle - world angle the group comes FROM (upstream direction)
+ * @param {number} fromAngle - world angle pointing toward spawn position (ahead of raft in wind direction)
  * @param {number} dist      - world-px distance from raft center
  */
 function spawnGroupAt(fromAngle, dist) {

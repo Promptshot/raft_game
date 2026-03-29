@@ -15,6 +15,26 @@ Assets/
   water/             — water tileset
 ```
 
+## Git Branching Strategy
+
+**Main branches:**
+- `master` — production-ready code only. Never commit directly.
+- `DEV` — integration branch for completed features.
+
+**Supporting branches:**
+- `feature/<ticket-or-description>` — one branch per feature or task, branched from `DEV`
+- `fix/<description>` — bug fixes, branched from `DEV`
+- `hotfix/<description>` — urgent production fixes, branched from `master`, merged back into both `master` and `DEV`
+- `release/<version>` — stabilization before a release, branched from `DEV`, merged into `master` and `DEV`
+
+**Rules:**
+- All changes go through pull requests — no direct pushes to `master` or `DEV`
+- Feature branches are short-lived; merge and delete when done
+- `master` is always deployable
+- Tag releases on `master` with semantic versions (e.g. `v1.2.0`)
+- Rebase feature branches on `DEV` before opening a PR to keep history clean
+- Squash commits on merge to keep `DEV`/`master` history readable
+
 ---
 
 ## Key Constants (main.js top)

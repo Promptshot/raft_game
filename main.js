@@ -2133,10 +2133,10 @@ function showCaskPopup(wood, plastic, palm, potato = 0) {
 // ── Wind Indicator ────────────────────────────────────────────
 
 function updateWindIndicator() {
-  // ▲ points north (up) at 0deg CSS rotation; Phaser angle 0 = east, so subtract 90°
+  // ▲ points north (up) at 0deg CSS rotation; Phaser angle 0 = east, so add 90° to rotate clockwise to east
   const el = document.getElementById('wind-arrow');
   if (!el) return;
-  const deg = (windAngle * 180 / Math.PI) - 90;
+  const deg = (windAngle * 180 / Math.PI) + 90;
   el.style.transform = `rotate(${deg}deg)`;
 }
 

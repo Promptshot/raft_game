@@ -34,6 +34,7 @@ Assets/
 - Tag releases on `master` with semantic versions (e.g. `v1.2.0`)
 - Rebase feature branches on `DEV` before opening a PR to keep history clean
 - Squash commits on merge to keep `DEV`/`master` history readable
+- Always pull latest of `DEV`/`master` before creating a branch.
 
 ---
 

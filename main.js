@@ -54,7 +54,6 @@ let floatingItems = []; // { gfx, type, vx, vy, physX, physY, bobPhase }
 let waveTimer      = 4;  // first wave arrives quickly
 let waveGroupsLeft = 0;
 let waveGroupTimer = 0;
-let currentShiftTimer = 25 + Math.random() * 20;
 let seagullTimer = 90 + Math.random() * 90; // first call in 1.5–3 min
 let sndSeagull;
 
@@ -1202,6 +1201,7 @@ function update(time, delta) {
 
   // --- Drift ---
   driftAngle += DRIFT_TURN * dt;
+  driftAngle += (windAngle - driftAngle) * WIND_SPRING * dt;
   const driftDX = Math.cos(driftAngle) * DRIFT_SPEED * dt;
   const driftDY = Math.sin(driftAngle) * DRIFT_SPEED * dt;
 
@@ -1223,15 +1223,6 @@ function update(time, delta) {
   if (seagullTimer <= 0) {
     if (sndSeagull) sndSeagull.play();
     seagullTimer = 120 + Math.random() * 120; // next call in 2–4 min
-  }
-
-  // --- Current shift ---
-  currentShiftTimer -= dt;
-  if (currentShiftTimer <= 0) {
-    // Rotate current 60–150° so the new groups visibly come from a different direction
-    const shift = (Math.PI / 3) + Math.random() * (Math.PI / 3);
-    driftAngle += Math.random() < 0.5 ? shift : -shift;
-    currentShiftTimer = 25 + Math.random() * 20; // next shift in 25–45 s
   }
 
   // --- Wave spawner: burst of groups, then calm gap ---

@@ -1206,12 +1206,19 @@ function update(time, delta) {
   const driftDX = Math.cos(driftAngle) * DRIFT_SPEED * dt;
   const driftDY = Math.sin(driftAngle) * DRIFT_SPEED * dt;
 
-  const clampedRX = Phaser.Math.Clamp(raftContainer.x + driftDX, WORLD_MARGIN, WORLD_SIZE - WORLD_MARGIN);
-  const clampedRY = Phaser.Math.Clamp(raftContainer.y + driftDY, WORLD_MARGIN, WORLD_SIZE - WORLD_MARGIN);
-  const actualDX  = clampedRX - raftContainer.x;
-  const actualDY  = clampedRY - raftContainer.y;
-  raftContainer.x = clampedRX;
-  raftContainer.y = clampedRY;
+  let newRX = raftContainer.x + driftDX;
+  let newRY = raftContainer.y + driftDY;
+
+  // Wrap raft to opposite edge instead of clamping
+  if (newRX < WORLD_MARGIN)               newRX = WORLD_SIZE - WORLD_MARGIN;
+  else if (newRX > WORLD_SIZE - WORLD_MARGIN) newRX = WORLD_MARGIN;
+  if (newRY < WORLD_MARGIN)               newRY = WORLD_SIZE - WORLD_MARGIN;
+  else if (newRY > WORLD_SIZE - WORLD_MARGIN) newRY = WORLD_MARGIN;
+
+  const actualDX = newRX - raftContainer.x;
+  const actualDY = newRY - raftContainer.y;
+  raftContainer.x = newRX;
+  raftContainer.y = newRY;
   player.x += actualDX;
   player.y += actualDY;
 

@@ -147,6 +147,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyE') {
     if (openChestKey)  { closeChest();   return; }
     if (openFurnaceId) { closeFurnace(); return; }
+    if (inventoryOpen) { inventoryOpen = false; inventoryPanel.style.display = 'none'; return; }
   }
   // Number keys 1-8 select hotbar slot
   const num = parseInt(e.key);
@@ -640,8 +641,7 @@ function playSoundCraft() {
   _note(784, null, 'sine', 0.20, 0.20, 0.2);
 }
 let splashGfx, splashT = 0, splashX = 0, splashY = 0;
-const chargeWrap  = document.getElementById('charge-wrap');
-const chargeFill  = document.getElementById('charge-fill');
+let chargeBarGfx;
 
 // ============================================================
 // PRELOAD
@@ -707,7 +707,7 @@ function create() {
     { gridX: 0, gridY: 0 },
     { gridX: 1, gridY: 0 },
   ];
-  raftContainer = this.add.container(WORLD_SIZE / 2, WORLD_SIZE / 2);
+  raftContainer = this.add.container(WORLD_SIZE / 2, WORLD_SIZE / 2).setDepth(1);
   buildRaft.call(this, raftTiles, raftContainer);
 
   player = this.physics.add.sprite(
@@ -915,8 +915,9 @@ function create() {
   });
 
   // --- Hook setup ---
-  spaceKey    = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-  hookGfx     = this.add.graphics().setDepth(5);
+  spaceKey     = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  chargeBarGfx = this.add.graphics().setDepth(6);
+  hookGfx      = this.add.graphics().setDepth(5);
   hookLineGfx = this.add.graphics().setDepth(4);
   hookSprite  = this.add.image(0, 0, 'hook').setDepth(5).setVisible(false).setDisplaySize(8, 8);
 
@@ -937,7 +938,7 @@ function create() {
   // Fire on space release
   this.input.keyboard.on('keyup-SPACE', function () {
     if (buildMode || hookState !== 'charging') return;
-    chargeWrap.style.display = 'none';
+    chargeBarGfx.clear();
 
     const pointer = this.input.mousePointer;
     const worldPt = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -1154,8 +1155,8 @@ function update(time, delta) {
   }
 
 
-  // --- Player movement (locked during cast / reel) ---
-  const canMove = hookState === 'idle' || hookState === 'landed';
+  // --- Player movement (locked only while hook is flying) ---
+  const canMove = hookState !== 'flying';
   player.setVelocity(0);
 
   if (canMove) {
@@ -1190,24 +1191,8 @@ function update(time, delta) {
     const nx = item.physX + item.vx * dt;
     const ny = item.physY + item.vy * dt;
 
-    // Raft collision — eject to nearest outside edge to prevent sticking
-    const inX = nx > raftBounds.minX - pad && nx < raftBounds.maxX + pad;
-    const inY = ny > raftBounds.minY - pad && ny < raftBounds.maxY + pad;
-
-    if (inX && inY) {
-      const dL = Math.abs(nx - (raftBounds.minX - pad));
-      const dR = Math.abs(nx - (raftBounds.maxX + pad));
-      const dT = Math.abs(ny - (raftBounds.minY - pad));
-      const dB = Math.abs(ny - (raftBounds.maxY + pad));
-      const m  = Math.min(dL, dR, dT, dB);
-      if      (m === dL) { item.physX = raftBounds.minX - pad - 1; item.vx = -Math.abs(item.vx); }
-      else if (m === dR) { item.physX = raftBounds.maxX + pad + 1; item.vx =  Math.abs(item.vx); }
-      else if (m === dT) { item.physY = raftBounds.minY - pad - 1; item.vy = -Math.abs(item.vy); }
-      else               { item.physY = raftBounds.maxY + pad + 1; item.vy =  Math.abs(item.vy); }
-    } else {
-      item.physX = nx;
-      item.physY = ny;
-    }
+    item.physX = nx;
+    item.physY = ny;
 
     // Visual bob (doesn't affect physics position)
     item.gfx.x = item.physX;
@@ -1224,16 +1209,20 @@ function update(time, delta) {
   }
 
   // --- Hook --- (disabled in build mode)
-  if (!buildMode && hookState === 'idle' && spaceKey.isDown) {
+  if (!buildMode && hookState === 'idle' && Phaser.Input.Keyboard.JustDown(spaceKey)) {
     hookState = 'charging';
   }
 
   if (hookState === 'charging') {
     chargeTime = Math.min(chargeTime + dt, MAX_CHARGE_TIME);
     const ratio = chargeTime / MAX_CHARGE_TIME;
-    chargeWrap.style.display    = 'block';
-    chargeFill.style.width      = (ratio * 100) + '%';
-    chargeFill.style.background = ratio < 0.5 ? '#44dd44' : ratio < 0.85 ? '#ffaa00' : '#ff3300';
+    const barW = 30, barH = 4, barX = player.x - barW / 2, barY = player.y - 22;
+    const fillColor = ratio < 0.5 ? 0x44dd44 : ratio < 0.85 ? 0xffaa00 : 0xff3300;
+    chargeBarGfx.clear();
+    chargeBarGfx.fillStyle(0x000000, 0.55);
+    chargeBarGfx.fillRect(barX, barY, barW, barH);
+    chargeBarGfx.fillStyle(fillColor, 1);
+    chargeBarGfx.fillRect(barX, barY, barW * ratio, barH);
     // Face the mouse while charging
     const ptr = this.cameras.main.getWorldPoint(this.input.mousePointer.x, this.input.mousePointer.y);
     faceToward(ptr.x, ptr.y);
@@ -1389,8 +1378,8 @@ function update(time, delta) {
   }
 
   // --- Animation ---
-  if (!canMove || hookState === 'reeling') {
-    // Locked during cast/reel — hold idle facing direction
+  if (!canMove) {
+    // Locked while hook is flying — hold idle facing direction
     player.anims.play('idle_' + lastDir, true);
   } else if (wasd.left.isDown) {
     lastDir = 'side'; player.setFlipX(true);
@@ -1749,12 +1738,18 @@ const chestPanel = document.getElementById('chest-panel');
 function openChest(key) {
   openChestKey = key;
   chestPanel.style.display = 'block';
+  chestPanel.classList.add('chest-open');
+  inventoryPanel.style.display = 'block';
+  inventoryPanel.classList.add('chest-open');
   renderChest();
 }
 
 function closeChest() {
   openChestKey = null;
   chestPanel.style.display = 'none';
+  chestPanel.classList.remove('chest-open');
+  inventoryPanel.classList.remove('chest-open');
+  inventoryPanel.style.display = inventoryOpen ? 'block' : 'none';
 }
 
 function renderChest() {

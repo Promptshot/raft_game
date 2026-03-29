@@ -487,6 +487,14 @@
       padding: 9px;
       user-select: none;
     }
+    #chest-panel.chest-open {
+      left: calc(50% - 8px);
+      transform: translate(-100%, -50%);
+    }
+    #inventory-panel.chest-open {
+      left: calc(50% + 8px);
+      transform: translate(0%, -50%);
+    }
 
     #inv-grid {
       display: grid;
@@ -546,11 +554,6 @@
   </style>
 </head>
 <body oncontextmenu="return false">
-  <div id="charge-wrap">
-    <div id="charge-label">Hold SPACE to cast</div>
-    <div id="charge-track"><div id="charge-fill"></div></div>
-  </div>
-
   <div id="craft-panel">
     <h3>CRAFTING</h3>
 

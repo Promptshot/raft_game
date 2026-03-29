@@ -8,6 +8,7 @@ const PLAYER_SPEED = 45;
 const WORLD_SIZE   = 4000;
 const DRIFT_SPEED  = 3;    // raft barely moves — ocean current does the work
 const DRIFT_TURN   = 0.008; // very slow heading change
+const WIND_SPRING  = 1.5;  // spring strength pulling driftAngle back to windAngle
 const CURRENT_SPEED   = 28; // debris drift speed (faster than raft so it passes by)
 const WAVE_INTERVAL_MIN   = 12; // calm gap between waves
 const WAVE_INTERVAL_MAX   = 22;
@@ -47,6 +48,7 @@ let raftTiles;
 let raftContainer;
 let waterBg;
 let driftAngle = Math.random() * Math.PI * 2;
+let windAngle = 0; // set in create() or loadGame()
 let lastDir = 'down';
 let floatingItems = []; // { gfx, type, vx, vy, physX, physY, bobPhase }
 let waveTimer      = 4;  // first wave arrives quickly
@@ -1067,6 +1069,10 @@ function create() {
   };
   this.input.once('pointerdown', startAudio);
   this.input.keyboard.once('keydown', startAudio);
+
+  // Establish wind direction for this session (loadGame may overwrite)
+  windAngle = Math.random() * Math.PI * 2;
+  driftAngle = windAngle;
 
   // Seed the world with debris already in transit — all off-screen, staggered distances
   // so they arrive spread out rather than all at once
@@ -2150,8 +2156,9 @@ function saveGame() {
     stats: { health: statHealth, hunger: statHunger, hydration: statHydration, stamina: statStamina },
     playerX: player.x,
     playerY: player.y,
-    raftX:   raftContainer.x,
-    raftY:   raftContainer.y,
+    raftX:      raftContainer.x,
+    raftY:      raftContainer.y,
+    windAngle:  windAngle,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch(e) {}
 }
@@ -2200,6 +2207,10 @@ function loadGame() {
   // Restore player position
   if (data.playerX !== undefined) { player.x = data.playerX; player.y = data.playerY; }
   this.cameras.main.centerOn(player.x, player.y);
+
+  // Restore wind direction (fallback for saves before this feature)
+  windAngle  = data.windAngle ?? Math.random() * Math.PI * 2;
+  driftAngle = windAngle;
 }
 
 function showSaveIndicator() {

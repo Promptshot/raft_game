@@ -56,9 +56,17 @@ let currentShiftTimer = 25 + Math.random() * 20;
 let seagullTimer = 90 + Math.random() * 90; // first call in 1.5–3 min
 let sndSeagull;
 
+// --- Catchers ---
+let catcherTiles    = []; // { gridX, gridY, id }
+const catcherStorages = {}; // id -> [{ type, count }]  (flat list, max 30 total items)
+let openCatcherId   = null;
+const CATCHER_CAPACITY = 30;
+
 // --- Build mode ---
-let buildMode  = false;
+let buildMode     = false;
+let tilePlaceMode = 'normal'; // 'normal' | 'catcher'
 let movingStructure = null; // structure being repositioned in build mode
+let pendingDelete   = null; // structure awaiting Y/N confirmation
 let ghostGfx;
 let inventoryOpen = false;
 const inventoryPanel = document.getElementById('inventory-panel');
@@ -144,9 +152,18 @@ window.addEventListener('keydown', (e) => {
     inventoryOpen = !inventoryOpen;
     inventoryPanel.style.display = inventoryOpen ? 'block' : 'none';
   }
+  // Y / N for delete confirmation
+  if (pendingDelete) {
+    if (e.code === 'KeyY') { removeStructureById(pendingDelete.id); hideDeleteConfirm(); return; }
+    if (e.code === 'KeyN' || e.code === 'Escape') { hideDeleteConfirm(); return; }
+    return; // block other keys while confirming
+  }
+
   if (e.code === 'Escape' || e.code === 'KeyE') {
-    if (openChestKey)  { closeChest();   return; }
-    if (openFurnaceId) { closeFurnace(); return; }
+    if (openChestKey)    { closeChest();   return; }
+    if (openFurnaceId)   { closeFurnace(); return; }
+    if (openCatcherId)   { closeCatcher(); return; }
+    if (inventoryOpen)   { inventoryOpen = false; inventoryPanel.style.display = 'none'; return; }
   }
   // Number keys 1-8 select hotbar slot
   const num = parseInt(e.key);
@@ -159,9 +176,14 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  // F — eat selected hotbar food item
+  // F — use cup to drink, or eat selected hotbar food item
   if (e.code === 'KeyF') {
     const slot = hotbarData[hotbarSelected];
+    if (slot.type === 'cup') {
+      statHydration = Math.min(100, statHydration + 50);
+      playSoundCraft();
+      return;
+    }
     const food = slot.type && FOOD_VALUES[slot.type];
     if (food) {
       statHunger    = Math.min(100, statHunger    + food.hunger);
@@ -219,6 +241,7 @@ const ITEM_SPRITES = {
   scrap_metal:  'Assets/raft/scrap_metal.png',
   raw_potato:    'Assets/raft/raw_potato.png',
   cooked_potato: 'Assets/raft/cooked_potato.png',
+  netting:       'Assets/raft/netting.png?v=2',
 };
 
 // tileSize: how many tiles the structure spans (1 = normal, 2 = 2-tile along rotation axis)
@@ -227,7 +250,7 @@ const STRUCTURE_TILE_SIZE = { sleeping_bag: 2 };
 const PLACEABLE_TYPES = new Set(['campfire', 'chest', 'sleeping_bag', 'workbench']);
 
 // tier 1 recipes require a placed workbench
-const TIER1_RECIPES = new Set(['campfire', 'cup', 'chest', 'sleeping_bag']);
+const TIER1_RECIPES = new Set(['campfire', 'cup', 'chest', 'sleeping_bag', 'netting']);
 
 // Raft structures: items placed on raft tiles
 let raftStructures = []; // { gridX, gridY, type, localX, localY, rotation }
@@ -369,7 +392,7 @@ function renderSlot(el, slot) {
 function renderInventory() {
   document.querySelectorAll('.hotbar-slot').forEach((el, i) => renderSlot(el, hotbarData[i]));
   document.querySelectorAll('.inv-slot').forEach((el, i) => renderSlot(el, invData[i]));
-  if (buildMode) { updateBuildIndicator(); updateCraftPanel(); }
+  if (buildMode) { updateBuildIndicator(); updateCraftPanel(); updateTileModeIndicator(); }
   if (openChestKey)  renderChest();
   if (openFurnaceId) renderFurnace();
 }
@@ -397,6 +420,26 @@ function updateBuildIndicator() {
   }
 
   buildIndicator.innerHTML = `Raft Tile &nbsp;·&nbsp; ${costLine}${shortLine}`;
+}
+
+function updateTileModeIndicator() {
+  const el = document.getElementById('tile-mode-indicator');
+  if (!el) return;
+  if (!buildMode) { el.style.display = 'none'; return; }
+  const icon = (src) => `<img src="${src}" style="width:14px;height:14px;image-rendering:pixelated;vertical-align:middle;margin:0 2px">`;
+  if (tilePlaceMode === 'catcher') {
+    const nc = countItem('netting'), wc = countItem('wood');
+    el.innerHTML = `${icon('Assets/raft/catcher.png')} CATCHER MODE &nbsp;·&nbsp; `
+      + `<span style="color:${nc>=1?'#aaffaa':'#ff6666'}">${icon('Assets/raft/netting.png')} 1</span>`
+      + ` + <span style="color:${wc>=10?'#aaffaa':'#ff6666'}">${icon('Assets/raft/plank.png')} 10</span>`
+      + `<span style="color:#888;font-size:10px"> &nbsp;[N] to switch</span>`;
+    el.style.color = '#6ecf6e';
+  } else {
+    el.innerHTML = `${icon('Assets/raft/plank.png')} RAFT MODE`
+      + `<span style="color:#888;font-size:10px"> &nbsp;[N] for catcher</span>`;
+    el.style.color = '#ddcc88';
+  }
+  el.style.display = 'block';
 }
 
 // --- Held item cursor ---
@@ -430,6 +473,7 @@ const RECIPES = {
   cup:          { inputs: { plastic: 10 },               outputs: { cup: 1 },          label: 'Cup' },
   chest:        { inputs: { wood: 10, rope: 2 },         outputs: { chest: 1 },        label: 'Small Chest' },
   sleeping_bag: { inputs: { rope: 2, palm: 10 },         outputs: { sleeping_bag: 1 }, label: 'Sleeping Bag' },
+  netting:      { inputs: { rope: 5, wood: 10, plastic: 5, scrap_metal: 1 }, outputs: { netting: 1 }, label: 'Netting' },
 };
 
 function hasPlacedWorkbench() {
@@ -489,6 +533,8 @@ document.addEventListener('mousemove', (e) => {
   hammerCursor.style.left = e.clientX + 'px';
   hammerCursor.style.top  = e.clientY + 'px';
 });
+craftPanel.addEventListener('mouseenter', () => { hammerCursor.style.visibility = 'hidden'; });
+craftPanel.addEventListener('mouseleave', () => { hammerCursor.style.visibility = 'visible'; });
 
 // Drop held item on right-click
 document.addEventListener('contextmenu', (e) => {
@@ -653,7 +699,7 @@ function preload() {
   this.load.audio('splash',  'Assets/sounds/water splash.mp3');
   this.load.audio('reel',    'Assets/sounds/reelnoise.mp3');
   this.load.audio('pickup',  'Assets/sounds/item pickup.mp3');
-  this.load.audio('seagull', 'Assets/sounds/seagull.mp3');
+  this.load.audio('seagull', 'Assets/sounds/seagull1.mp3');
   this.load.audio('pop1',    'Assets/sounds/pop1.mp3');
   this.load.spritesheet('water_sheet', 'Assets/water/Water_tiles.png', {
     frameWidth: 16, frameHeight: 16
@@ -672,6 +718,8 @@ function preload() {
   this.load.image('scrap_metal',   'Assets/raft/scrap_metal.png');
   this.load.image('raw_potato',    'Assets/raft/raw_potato.png');
   this.load.image('cooked_potato', 'Assets/raft/cooked_potato.png');
+  this.load.image('netting',       'Assets/raft/netting.png?v=2');
+  this.load.image('catcher',       'Assets/raft/catcher.png');
   this.load.image('campfire_icon', 'Assets/raft/campfire_icon.png');
   const PC = 'Assets/Pixel Crawler - Free Pack 2.0.4/Pixel Crawler - Free Pack';
   this.load.spritesheet('campfire', PC + '/Environment/Structures/Stations/Bonfire/Bonfire_01-Sheet.png',
@@ -740,12 +788,18 @@ function create() {
     const hasHammer = [...hotbarData, ...invData].some(s => s.type === 'hammer' && s.count > 0);
     if (!hasHammer) return;
     buildMode = !buildMode;
-    if (buildMode) { playSoundBuildMode(); updateBuildIndicator(); updateCraftPanel(); }
-    else { ghostGfx.clear(); placeRotation = 0; placeGhostImg.setVisible(false); cancelMove(); }
+    if (buildMode) { playSoundBuildMode(); updateBuildIndicator(); updateCraftPanel(); tilePlaceMode = 'normal'; updateTileModeIndicator(); }
+    else { ghostGfx.clear(); placeRotation = 0; placeGhostImg.setVisible(false); cancelMove(); hideDeleteConfirm(); tilePlaceMode = 'normal'; updateTileModeIndicator(); }
     buildIndicator.style.display = buildMode ? 'block' : 'none';
     hammerCursor.style.display   = buildMode ? 'block' : 'none';
     craftPanel.style.display     = buildMode ? 'block' : 'none';
     document.body.classList.toggle('build-mode', buildMode);
+  });
+
+  this.input.keyboard.on('keydown-N', function () {
+    if (!buildMode) return;
+    tilePlaceMode = tilePlaceMode === 'normal' ? 'catcher' : 'normal';
+    updateTileModeIndicator();
   });
 
   this.cameras.main.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE);
@@ -765,10 +819,10 @@ function create() {
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const gx = Math.floor((world.x - raftContainer.x) / TILE_SIZE);
     const gy = Math.floor((world.y - raftContainer.y) / TILE_SIZE);
-    const occupied = new Set(raftTiles.map(t => `${t.gridX},${t.gridY}`));
+    const occupied = new Set([...raftTiles, ...catcherTiles].map(t => `${t.gridX},${t.gridY}`));
 
     if (!buildMode) {
-      let nearest = null, nearDist = 12, nearType = null;
+      let nearest = null, nearDist = 22, nearType = null;
       for (const st of raftStructures) {
         if (st.type !== 'chest' && st.type !== 'campfire') continue;
         const lx = stLocalX(st);
@@ -781,6 +835,16 @@ function create() {
       if (nearest) {
         if (nearType === 'chest') openChest(nearest.id);
         else if (nearType === 'campfire') openFurnace(nearest.id);
+        return;
+      }
+      // Check catcher tiles
+      for (const ct of catcherTiles) {
+        const wx2 = raftContainer.x + ct.gridX * TILE_SIZE + TILE_SIZE / 2;
+        const wy2 = raftContainer.y + ct.gridY * TILE_SIZE + TILE_SIZE / 2;
+        if (Math.hypot(world.x - wx2, world.y - wy2) < 22) {
+          openCatcher(ct.id);
+          return;
+        }
       }
       return;
     }
@@ -797,7 +861,19 @@ function create() {
         const d = Math.hypot(world.x - wx2, world.y - wy2);
         if (d < nearDist) { nearDist = d; nearSt = st; }
       }
-      if (nearSt) { removeStructureById(nearSt.id); return; }
+      if (nearSt) { showDeleteConfirm(nearSt); return; }
+      // Remove catcher tile
+      const catchIdx = catcherTiles.findIndex(t => t.gridX === gx && t.gridY === gy);
+      if (catchIdx !== -1) {
+        const ct = catcherTiles[catchIdx];
+        catcherTiles.splice(catchIdx, 1);
+        delete catcherStorages[ct.id];
+        if (openCatcherId == ct.id) closeCatcher();
+        addToInventory('netting', 1);
+        addToInventory('wood', 10);
+        rebuildCatcherSprites.call(this);
+        return;
+      }
       const idx = raftTiles.findIndex(t => t.gridX === gx && t.gridY === gy);
       if (idx !== -1 && raftTiles.length > 1) {
         raftTiles.splice(idx, 1);
@@ -898,11 +974,26 @@ function create() {
       return;
     }
 
-    // Normal tile placement
+    // Normal / catcher tile placement
     if (occupied.has(`${gx},${gy}`)) return;
     const adjacent = [[1,0],[-1,0],[0,1],[0,-1]]
       .some(([dx, dy]) => occupied.has(`${gx + dx},${gy + dy}`));
     if (!adjacent) return;
+
+    // Catcher tile mode (N key toggle)
+    if (tilePlaceMode === 'catcher') {
+      if (countItem('netting') < 1 || countItem('wood') < 10) return;
+      removeItems('netting', 1);
+      removeItems('wood', 10);
+      const catchId = Date.now() + Math.random();
+      catcherTiles.push({ gridX: gx, gridY: gy, id: catchId });
+      catcherStorages[catchId] = [];
+      if (sndPop) sndPop.play();
+      rebuildCatcherSprites.call(this);
+      renderInventory();
+      return;
+    }
+
     if (countItem('wood') < 10 || countItem('plastic') < 2) return;
     removeItems('wood', 10);
     removeItems('plastic', 2);
@@ -1098,6 +1189,7 @@ function update(time, delta) {
 
   // --- Furnace tick ---
   tickFurnaces(dt);
+  tickCatchers();
 
   // --- Stats tick ---
   tickStats(dt);
@@ -1461,7 +1553,7 @@ function hookCollect() {
  */
 function isOnRaft(wx, wy) {
   const T = TILE_SIZE;
-  for (const tile of raftTiles) {
+  for (const tile of [...raftTiles, ...catcherTiles]) {
     const lx = wx - (raftContainer.x + tile.gridX * T);
     const ly = wy - (raftContainer.y + tile.gridY * T);
     if (lx < 0 || lx >= T || ly < 0 || ly >= T) continue;
@@ -1564,18 +1656,28 @@ function drawGhostTiles(pointer, camera) {
   placeGhostImg.setVisible(false);
 
   placeGhostImg.setVisible(false);
-  // Normal tile ghost — must be unoccupied and adjacent
+  // Normal / catcher tile ghost — must be unoccupied and adjacent
   if (occupied.has(`${gx},${gy}`)) return;
   const adjacent = [[1,0],[-1,0],[0,1],[0,-1]]
     .some(([dx, dy]) => occupied.has(`${gx + dx},${gy + dy}`));
   if (!adjacent) return;
 
-  const canAfford = countItem('wood') >= 10 && countItem('plastic') >= 2;
+  const canAfford = tilePlaceMode === 'catcher'
+    ? countItem('netting') >= 1 && countItem('wood') >= 10
+    : countItem('wood') >= 10 && countItem('plastic') >= 2;
   const col = canAfford ? 0x44ff44 : 0xff3333;
   ghostGfx.fillStyle(col, 0.25);
   ghostGfx.lineStyle(1.5, col, 0.9);
   ghostGfx.fillRect(wx, wy, T, T);
   ghostGfx.strokeRect(wx, wy, T, T);
+
+  if (tilePlaceMode === 'catcher') {
+    placeGhostImg.setTexture('catcher')
+      .setPosition(wx + T / 2, wy + T / 2)
+      .setDisplaySize(T, T)
+      .setRotation(0)
+      .setVisible(true);
+  }
 }
 
 // ── Player Stats ─────────────────────────────────────────────
@@ -1664,6 +1766,101 @@ function resolveChestCollision() {
 }
 
 // ── Raft Structures ──────────────────────────────────────────
+let catcherSprites = [];
+function rebuildCatcherSprites() {
+  catcherSprites.forEach(s => s.destroy());
+  catcherSprites = [];
+  const T = TILE_SIZE;
+  for (const ct of catcherTiles) {
+    const spr = phaserScene.add.image(
+      ct.gridX * T + T / 2,
+      ct.gridY * T + T / 2,
+      'catcher'
+    ).setDisplaySize(T, T).setDepth(1);
+    raftContainer.add(spr);
+    catcherSprites.push(spr);
+  }
+}
+
+function tickCatchers() {
+  const T = TILE_SIZE;
+  for (let i = floatingItems.length - 1; i >= 0; i--) {
+    const item = floatingItems[i];
+    if (item.type === 'cask') continue; // casks not caught
+    for (const ct of catcherTiles) {
+      const wx = raftContainer.x + ct.gridX * T + T / 2;
+      const wy = raftContainer.y + ct.gridY * T + T / 2;
+      if (Math.hypot(item.physX - wx, item.physY - wy) > T) continue;
+      // In range — try to store
+      const store = catcherStorages[ct.id];
+      const total = store.reduce((n, s) => n + s.count, 0);
+      if (total >= CATCHER_CAPACITY) continue;
+      const existing = store.find(s => s.type === item.type);
+      if (existing) existing.count++;
+      else store.push({ type: item.type, count: 1 });
+      item.gfx.destroy();
+      floatingItems.splice(i, 1);
+      if (openCatcherId == ct.id) renderCatcher();
+      break;
+    }
+  }
+}
+
+function openCatcher(id) {
+  openCatcherId = id;
+  if (openChestKey) closeChest();
+  if (openFurnaceId) closeFurnace();
+  renderCatcher();
+  document.getElementById('catcher-panel').style.display = 'block';
+}
+function closeCatcher() {
+  openCatcherId = null;
+  document.getElementById('catcher-panel').style.display = 'none';
+}
+function renderCatcher() {
+  if (!openCatcherId) return;
+  const store = catcherStorages[openCatcherId] || [];
+  const total = store.reduce((n, s) => n + s.count, 0);
+  document.getElementById('catcher-capacity').textContent = `${total} / ${CATCHER_CAPACITY}`;
+  const list = document.getElementById('catcher-item-list');
+  list.innerHTML = '';
+  if (store.length === 0) {
+    list.innerHTML = '<div style="color:#888;font-size:11px;text-align:center;padding:8px">Empty</div>';
+    return;
+  }
+  for (const slot of store) {
+    const row = document.createElement('div');
+    row.className = 'catcher-row';
+    row.innerHTML = `<img src="${ITEM_SPRITES[slot.type]}" style="width:16px;height:16px;image-rendering:pixelated">
+      <span>${slot.type.replace(/_/g,' ')} ×${slot.count}</span>
+      <button onclick="catcherTakeItem('${slot.type}')">Take</button>
+      <button onclick="catcherTakeAll('${slot.type}')">All</button>`;
+    list.appendChild(row);
+  }
+}
+function catcherTakeItem(type) {
+  if (!openCatcherId) return;
+  const store = catcherStorages[openCatcherId];
+  const slot = store.find(s => s.type === type);
+  if (!slot) return;
+  const overflow = addToInventory(type, 1);
+  if (overflow === 0) {
+    slot.count--;
+    if (slot.count <= 0) store.splice(store.indexOf(slot), 1);
+  }
+  renderCatcher();
+}
+function catcherTakeAll(type) {
+  if (!openCatcherId) return;
+  const store = catcherStorages[openCatcherId];
+  const slot = store.find(s => s.type === type);
+  if (!slot) return;
+  const overflow = addToInventory(type, slot.count);
+  slot.count = overflow;
+  if (slot.count <= 0) store.splice(store.indexOf(slot), 1);
+  renderCatcher();
+}
+
 function rebuildStructureSprites() {
   structureSprites.forEach(s => s.destroy());
   structureSprites = [];
@@ -1708,6 +1905,18 @@ function placeStructure(gx, gy, type, localX, localY, rotation) {
   if (sndPop) sndPop.play();
   rebuildStructureSprites();
   return true;
+}
+
+function showDeleteConfirm(st) {
+  pendingDelete = st;
+  const panel = document.getElementById('delete-confirm');
+  document.getElementById('delete-confirm-name').textContent = st.type.replace(/_/g, ' ').toUpperCase();
+  panel.style.display = 'flex';
+}
+
+function hideDeleteConfirm() {
+  pendingDelete = null;
+  document.getElementById('delete-confirm').style.display = 'none';
 }
 
 function removeStructureById(id) {
@@ -1938,6 +2147,8 @@ function saveGame() {
     raftTiles:      raftTiles.map(({ gridX, gridY }) => ({ gridX, gridY })),
     raftStructures: raftStructures.map(({ gridX, gridY, type, localX, localY, rotation, id }) =>
                       ({ gridX, gridY, type, localX, localY, rotation, id })),
+    catcherTiles:    catcherTiles.map(({ gridX, gridY, id }) => ({ gridX, gridY, id })),
+    catcherStorages,
     chestStorages,
     furnaceStates,
     hotbarData,
@@ -1973,6 +2184,11 @@ function loadGame() {
   if (data.chestStorages) Object.assign(chestStorages, data.chestStorages);
   if (data.furnaceStates) Object.assign(furnaceStates, data.furnaceStates);
   rebuildStructureSprites();
+
+  // Restore catchers
+  catcherTiles = data.catcherTiles || [];
+  if (data.catcherStorages) Object.assign(catcherStorages, data.catcherStorages);
+  rebuildCatcherSprites.call(this);
 
   // Restore inventory
   if (data.hotbarData) data.hotbarData.forEach((s, i) => { hotbarData[i] = s; });
